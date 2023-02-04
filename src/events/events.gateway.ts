@@ -10,42 +10,50 @@ import { Server, Socket } from 'socket.io';
 
 @WebSocketGateway({
   cors: { origin: '*' },
+  namespace: 'custom-namespace',
 })
 export class EventsGateway implements OnModuleInit {
   @WebSocketServer()
   server: Server;
 
   onModuleInit() {
-    console.log('init');
     this.server.on('connection', (socket) => {
-      this.server.emit('onEnter', {
-        id: socket.id,
-      });
-      console.log(socket.id);
+      const origin = socket.handshake.headers.origin; // Undefined if coming from postman
+      console.log('Connection from', socket.id, 'Origin', { origin });
+      this.server.emit('onEnter', `Server: Connected to ${socket.id}`);
+      if (origin) {
+        socket.join('browserRoom');
+      }
     });
   }
 
-  @SubscribeMessage('newMessage')
-  onNewMessage(
-    @MessageBody() data: any,
-    @ConnectedSocket() client: Socket,
-  ): string {
+  @SubscribeMessage('onChat')
+  onMessage(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
     console.log(data);
     // console.log({ client });
-    this.server.emit('onMessage', {
-      name: 'hello',
-    });
-    return 'Hello world!';
+    // this.server.emit(
+    //   'onChat',
+    //   `Server: onChat: Client Id: ${client.id}: Data: ${JSON.stringify(data)}`,
+    // );
+    client.broadcast.emit(
+      'onChat',
+      `[${client.id}]: Data: ${JSON.stringify(data)}`,
+    );
+
+    this.server
+      .to('browserRoom')
+      .emit('onChat', `[Room] Data: ${JSON.stringify(data)}`);
   }
 
-  @SubscribeMessage('newMessage2')
-  onNewMessage2(
-    @MessageBody() data: any,
-    @ConnectedSocket() client: Socket,
-  ): string {
-    console.log('message2');
-    console.log(data);
-    // console.log({ client });
-    return 'Hello world!';
+  @SubscribeMessage('onPrivate')
+  onPrivate(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
+    const privateMessage = data[0];
+    const toId = data[1];
+    client
+      .to(toId)
+      .emit(
+        'onPrivate',
+        `Server: from ${client.id} has message to you: ${privateMessage}`,
+      );
   }
 }
