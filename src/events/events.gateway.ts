@@ -5,6 +5,9 @@ import {
   MessageBody,
   ConnectedSocket,
   WebSocketServer,
+  OnGatewayInit,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 
@@ -12,20 +15,57 @@ import { Server, Socket } from 'socket.io';
   cors: { origin: '*' },
   namespace: 'custom-namespace',
 })
-export class EventsGateway implements OnModuleInit {
+export class EventsGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
-  onModuleInit() {
-    this.server.on('connection', (socket) => {
-      const origin = socket.handshake.headers.origin; // Undefined if coming from postman
-      console.log('Connection from', socket.id, 'Origin', { origin });
-      this.server.emit('onEnter', `Server: Connected to ${socket.id}`);
-      if (origin) {
-        socket.join('browserRoom');
+  afterInit(server: Server) {
+    // server.on('connection', (socket) => {
+    //   const origin = socket.handshake.headers.origin; // Undefined if coming from postman
+    //   console.log('Connection from', socket.id, 'Origin', { origin });
+    //   this.server.emit('onEnter', `Server: Connected to ${socket.id}`);
+    //   if (origin) {
+    //     socket.join('browserRoom');
+    //   }
+    // });
+
+    server.use((socket: Socket, next) => {
+      // validate auth is exist
+      if (
+        !socket.handshake.auth ||
+        !socket.handshake.auth.userId ||
+        !socket.handshake.auth.role
+      ) {
+        return next(new Error('Authentication error'));
       }
+      return next();
     });
   }
+
+  handleConnection(client: Socket, ...args: any[]) {
+    const origin = client.handshake.headers.origin; // Undefined if coming from postman
+    console.log('Connection from', client.id, 'Origin', { origin });
+    this.server.emit('onEnter', `Server: Connected to ${client.id}`);
+    if (origin) {
+      client.join('browserRoom');
+    }
+  }
+
+  handleDisconnect(client: Socket) {
+    console.log(`Disconnect: ${client.id}`);
+  }
+  // onModuleInit() {
+  //   this.server.on('connection', (socket) => {
+  //     const origin = socket.handshake.headers.origin; // Undefined if coming from postman
+  //     console.log('Connection from', socket.id, 'Origin', { origin });
+  //     this.server.emit('onEnter', `Server: Connected to ${socket.id}`);
+  //     if (origin) {
+  //       socket.join('browserRoom');
+  //     }
+  //   });
+  // }
 
   @SubscribeMessage('onChat')
   onMessage(@MessageBody() data: any, @ConnectedSocket() client: Socket) {
