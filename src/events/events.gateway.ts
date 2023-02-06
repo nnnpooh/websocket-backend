@@ -10,10 +10,20 @@ import {
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import { Request } from 'express';
 
 @WebSocketGateway({
+  // https://socket.io/docs/v4/server-options/
   cors: { origin: '*' },
   namespace: 'custom-namespace',
+  serveClient: false,
+  allowRequest(req: Request, callback: (err: Error, success: boolean) => void) {
+    const headers = req.headers;
+    callback(
+      null,
+      (req.headers.secret && req.headers.secret === '12345') || false,
+    );
+  },
 })
 export class EventsGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
@@ -33,11 +43,7 @@ export class EventsGateway
 
     server.use((socket: Socket, next) => {
       // validate auth is exist
-      if (
-        !socket.handshake.auth ||
-        !socket.handshake.auth.userId ||
-        !socket.handshake.auth.role
-      ) {
+      if (!socket.handshake.auth.userId || !socket.handshake.auth.role) {
         return next(new Error('Authentication error'));
       }
       return next();
